@@ -27,6 +27,12 @@ notebook_description = "Summary statistics and visualization of Federal Reserve 
 notebook_path = "_output/summary_fed_yield_curve_ipynb.ipynb"
 is_publishable = true
 
+[notebooks.gsw_crsp_replication_ipynb]
+notebook_name = "gsw_crsp_replication_ipynb"
+notebook_description = "Replication of GSW (2007) Figures 1, 2, and 6 using CRSP Treasury data (optional; requires WRDS_USERNAME)"
+notebook_path = "_output/gsw_crsp_replication_ipynb.ipynb"
+is_publishable = true
+
 [charts]
 
 [charts.yield_curve_replication]

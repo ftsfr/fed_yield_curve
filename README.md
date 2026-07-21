@@ -29,6 +29,24 @@ Journal of Monetary Economics 54.8 (2007): 2291-2304.
 
 3. View the generated documentation in `docs/index.html`
 
+No credentials are required for the core pipeline.
+
+## Optional: WRDS / CRSP Treasury Data
+
+If you have a [WRDS](https://wrds-www.wharton.upenn.edu/) account, you can
+additionally enable the CRSP Treasury pull, which powers the reproduction of
+Figures 1, 2, and 6 from Gurkaynak, Sack, and Wright (2007) in the
+`gsw_crsp_replication_ipynb` notebook:
+
+1. Copy `.env.example` to `.env` and set `WRDS_USERNAME` to your WRDS username
+   (store your password in `~/.pgpass`, or let the `wrds` package prompt for it).
+2. Rerun `doit`.
+
+Without a WRDS username, `doit` still completes: the `pull:crsp_treasury` task
+prints a note instead of pulling, and the replication notebook is built with the
+CRSP-based figures skipped. Figures 4 and 5 of the paper need only the public
+Fed data and are always reproduced in the summary notebook.
+
 ## Yield Data
 
 The dataset contains zero-coupon yields (SVENY01 to SVENY30) for maturities from 1 to 30 years,

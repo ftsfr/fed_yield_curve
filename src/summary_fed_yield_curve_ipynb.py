@@ -23,6 +23,7 @@ import warnings
 
 import chartbook
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 
@@ -142,104 +143,13 @@ print(df_wide.isnull().sum())
 # ## GSW Paper Comparisons
 
 # %% [markdown]
-# For reference, we compare the estimated Federal Reserve Treasury yield curve with the results reported in the Gurkaynak, Sack, and Wright (2007) paper.
-
-# %% [markdown]
-# ### Figure 1
-
-# %% [markdown]
-# For reference, figure_1.png:
+# For reference, we compare the estimated Federal Reserve Treasury yield curve with
+# the results reported in the Gurkaynak, Sack, and Wright (2007) paper.
 #
-# ![Figure 1](../assets/figure_1.png)
-
-# %% [markdown]
-# We reproduce this figure from the CRSP Treasury issue table
-# (`CRSP_TFZ_INFO.parquet`, pulled via `doit pull:crsp_treasury`). Each noncallable
-# note/bond (`itype` 1 or 2) is drawn as a line from its issue date `tdatdt` (at its
-# original maturity in years) down to its maturity date `tmatdt` (at 0). The diagonal
-# streaks trace each security aging toward maturity; the stepped upper envelope is the
-# longest maturity issued over time (7 → 15 → 20 → 30 years). The x-axis starts at
-# 1961 to match the paper; our data extends to the present.
-
-# %%
-# Reproduce GSW Figure 1: outstanding Treasury securities (years to maturity over time)
-import matplotlib.dates as mdates
-from matplotlib.collections import LineCollection
-
-df_info = pd.read_parquet(DATA_DIR / "CRSP_TFZ_INFO.parquet").dropna(
-    subset=["tdatdt", "tmatdt"]
-)
-issue = mdates.date2num(df_info["tdatdt"])
-mat = mdates.date2num(df_info["tmatdt"])
-ytm_at_issue = (df_info["tmatdt"] - df_info["tdatdt"]).dt.days / 365.25
-segments = [[(i, y), (m, 0)] for i, y, m in zip(issue, ytm_at_issue, mat)]
-
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.add_collection(LineCollection(segments, colors="blue", linewidths=0.5))
-ax.xaxis_date()
-ax.set_xlim(
-    mdates.date2num(pd.Timestamp("1961-01-01")),
-    mdates.date2num(df_info["tdatdt"].max()),
-)
-ax.set_ylim(0, 35)
-ax.set_title("Outstanding Treasury Securities", fontsize=14)
-ax.set_ylabel("Years to Maturity")
-ax.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.show()
-
-# %% [markdown]
-# ### Figure 2
-
-# %% [markdown]
-# For reference, figure_2.png:
-#
-# ![Figure 2](../assets/figure_2.png)
-
-# %% [markdown]
-# We reproduce all three series from the paper on May 9, 2006:
-#
-# - **Par Yield** (line) — the fitted par curve from the published `SVENPY01`-`SVENPY30`.
-# - **Predicted Yield** (×) — for each coupon security trading that day, the
-#   bond-equivalent yield implied by pricing its cash flows off the Svensson curve
-#   (`BETA`/`TAU` params).
-# - **Actual Yield** (○) — the bond-equivalent yield of each security's market price
-#   (mid of CRSP bid/ask plus accrued interest).
-#
-# The pricing uses `src/gsw_pricing.py`, with per-security data from
-# `CRSP_TFZ_INFO.parquet` (coupon/maturity) and `CRSP_TFZ_DAILY.parquet` (quotes).
-
-# %%
-# Reproduce GSW Figure 2: par-yield curve with actual and predicted security yields
-import sys
-
-sys.path.insert(0, "./src")
-import gsw_pricing as gp
-
-df_info = pd.read_parquet(DATA_DIR / "CRSP_TFZ_INFO.parquet")
-df_daily = pd.read_parquet(DATA_DIR / "CRSP_TFZ_DAILY.parquet")
-
-fig2_date = pd.Timestamp("2006-05-09")
-maturities = list(range(1, 31))
-par_yields = [df_all.loc[fig2_date, f"SVENPY{m:02d}"] for m in maturities]
-scatter = gp.actual_vs_predicted_yields(
-    fig2_date, df_daily, df_info, df_all.loc[fig2_date]
-).dropna()
-
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.scatter(scatter["maturity_years"], scatter["actual_yield"],
-           facecolors="none", edgecolors="b", s=45, label="Actual Yield")
-ax.scatter(scatter["maturity_years"], scatter["predicted_yield"],
-           marker="x", c="b", s=30, label="Predicted Yield")
-ax.plot(maturities, par_yields, "b-", linewidth=1.5, label="Par Yield")
-ax.set_title(f"Par Yield Curve on {fig2_date:%B %d, %Y}", fontsize=14)
-ax.set_xlabel("Maturity in Years")
-ax.set_ylabel("Yield")
-ax.set_xlim(0, 30)
-ax.legend(loc="lower right")
-ax.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.show()
+# Figures 4 and 5 use only the published Fed data and are reproduced below. Figures
+# 1, 2, and 6 additionally require CRSP Treasury data from WRDS and are reproduced
+# in the companion notebook `gsw_crsp_replication_ipynb` — set `WRDS_USERNAME` in
+# `.env` to enable them (see the README).
 
 # %% [markdown]
 # ### Figure 4
@@ -298,8 +208,6 @@ plt.show()
 
 # %%
 # Reproduce GSW Figure 5: decompose the fitted yield curve into its Svensson terms
-import numpy as np
-
 fig5_date = pd.Timestamp("2006-05-09")
 p = df_all.loc[fig5_date]
 b0, b1, b2, b3 = p["BETA0"], p["BETA1"], p["BETA2"], p["BETA3"]
@@ -339,45 +247,6 @@ recon = (
 print("Maturity | reconstructed | published SVENY | diff")
 for m, rc in zip(check_mats, recon):
     print(f"{m:8d} | {rc:13.4f} | {p[f'SVENY{m:02d}']:15.4f} | {rc - p[f'SVENY{m:02d}']:+.6f}")
-
-# %% [markdown]
-# ### Figure 6
-
-# %% [markdown]
-# For reference, figure_6.png:
-#
-# ![Figure 6](../assets/figure_6.png)
-
-# %% [markdown]
-# Same construction as Figure 2, on May 24, 2005 (par line + per-security actual and
-# predicted yields). In the paper this date illustrates a cheapest-to-deliver premium:
-# securities near ~7 years trade rich (actual yield sitting below the fitted curve).
-# We plot the actual/predicted scatter; we do not single out the specific Aug-2012
-# note, which would require matching its CUSIP.
-
-# %%
-# Reproduce GSW Figure 6: par-yield curve with actual and predicted security yields
-fig6_date = pd.Timestamp("2005-05-24")
-maturities = list(range(1, 31))
-par_yields = [df_all.loc[fig6_date, f"SVENPY{m:02d}"] for m in maturities]
-scatter = gp.actual_vs_predicted_yields(
-    fig6_date, df_daily, df_info, df_all.loc[fig6_date]
-).dropna()
-
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.scatter(scatter["maturity_years"], scatter["actual_yield"],
-           facecolors="none", edgecolors="b", s=45, label="Actual Yield")
-ax.scatter(scatter["maturity_years"], scatter["predicted_yield"],
-           marker="x", c="b", s=30, label="Predicted Yield")
-ax.plot(maturities, par_yields, "b-", linewidth=1.5, label="Par Yield")
-ax.set_title(f"Par Yield Curve on {fig6_date:%B %d, %Y}", fontsize=14)
-ax.set_xlabel("Maturity in Years")
-ax.set_ylabel("Yield")
-ax.set_xlim(0, 30)
-ax.legend(loc="lower right")
-ax.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.show()
 
 # %% [markdown]
 # ## Current Yield Curve

@@ -12,15 +12,23 @@ DATA_DIR = BASE_DIR / "_data"
 OUTPUT_DIR = BASE_DIR / "_output"
 OS_TYPE = "nix" if platform.system() != "Windows" else "windows"
 
+# The core pipeline needs no credentials. Setting WRDS_USERNAME in .env
+# additionally enables the CRSP Treasury pull and the full GSW figure
+# replication notebook (see README).
+WRDS_USERNAME = chartbook.env.get("WRDS_USERNAME", default="")
+HAS_WRDS = WRDS_USERNAME not in ("", "your_wrds_username")
+
 
 os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
 
 
+# Paths are double-quoted (not single-quoted) so they work with spaces on
+# both sh and Windows cmd.exe, which does not treat ' as a quote character.
 # fmt: off
 def jupyter_execute_notebook(notebook_path):
-    return f"jupyter nbconvert --execute --to notebook --ClearMetadataPreprocessor.enabled=True --inplace '{notebook_path}'"
+    return f'jupyter nbconvert --execute --to notebook --ClearMetadataPreprocessor.enabled=True --inplace "{notebook_path}"'
 def jupyter_to_html(notebook_path, output_dir=OUTPUT_DIR):
-    return f"jupyter nbconvert --to html --output-dir='{output_dir}' '{notebook_path}'"
+    return f'jupyter nbconvert --to html --output-dir="{output_dir}" "{notebook_path}"'
 # fmt: on
 
 
@@ -29,9 +37,9 @@ def mv(from_path, to_path):
     to_path = Path(to_path)
     to_path.mkdir(parents=True, exist_ok=True)
     if OS_TYPE == "nix":
-        command = f"mv '{from_path}' '{to_path}'"
+        command = f'mv "{from_path}" "{to_path}"'
     else:
-        command = f"move '{from_path}' '{to_path}'"
+        command = f'move "{from_path}" "{to_path}"'
     return command
 
 
@@ -63,16 +71,33 @@ def task_pull():
         ],
         "clean": [],
     }
-    yield {
-        "name": "crsp_treasury",
-        "actions": ["python ./src/pull_CRSP_treasury.py"],
-        "targets": [
-            DATA_DIR / "CRSP_TFZ_INFO.parquet",
-            DATA_DIR / "CRSP_TFZ_DAILY.parquet",
-        ],
-        "file_dep": ["./src/pull_CRSP_treasury.py"],
-        "clean": [],
-    }
+    if HAS_WRDS:
+        yield {
+            "name": "crsp_treasury",
+            "actions": ["python ./src/pull_CRSP_treasury.py"],
+            "targets": [
+                DATA_DIR / "CRSP_TFZ_INFO.parquet",
+                DATA_DIR / "CRSP_TFZ_DAILY.parquet",
+            ],
+            "file_dep": ["./src/pull_CRSP_treasury.py"],
+            "clean": [],
+        }
+    else:
+        # Keep the subtask discoverable without WRDS credentials: it succeeds
+        # with a note instead of failing or disappearing from `doit list`.
+        def explain_crsp_pull():
+            print(
+                "Skipped: CRSP Treasury pull requires a WRDS account.\n"
+                "To enable it, copy .env.example to .env, set WRDS_USERNAME,\n"
+                "and rerun `doit`. This adds the CRSP-based reproductions of\n"
+                "GSW (2007) Figures 1, 2, and 6 to the replication notebook."
+            )
+        yield {
+            "name": "crsp_treasury",
+            "actions": [explain_crsp_pull],
+            "uptodate": [False],
+            "verbosity": 2,
+        }
 
 
 def task_format():
@@ -113,8 +138,25 @@ notebook_tasks = {
         "path": "./src/summary_fed_yield_curve_ipynb.py",
         "file_dep": [
             DATA_DIR / "ftsfr_treas_yield_curve_zero_coupon.parquet",
-            DATA_DIR / "CRSP_TFZ_INFO.parquet",
-            DATA_DIR / "CRSP_TFZ_DAILY.parquet",
+            DATA_DIR / "fed_yield_curve.parquet",
+            DATA_DIR / "fed_yield_curve_all.parquet",
+        ],
+        "targets": [],
+    },
+    # Always runs; without WRDS credentials the CRSP-based figures are
+    # replaced by a note explaining how to enable them.
+    "gsw_crsp_replication_ipynb": {
+        "path": "./src/gsw_crsp_replication_ipynb.py",
+        "file_dep": [
+            DATA_DIR / "fed_yield_curve_all.parquet",
+            *(
+                [
+                    DATA_DIR / "CRSP_TFZ_INFO.parquet",
+                    DATA_DIR / "CRSP_TFZ_DAILY.parquet",
+                ]
+                if HAS_WRDS
+                else []
+            ),
         ],
         "targets": [],
     },
