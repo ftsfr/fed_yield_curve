@@ -1,9 +1,11 @@
 import os
 import platform
+import subprocess
 import sys
 from pathlib import Path
 
 import chartbook
+from doit.tools import run_once
 
 sys.path.insert(1, "./src/")
 
@@ -51,6 +53,9 @@ def task_config():
     return {
         "actions": [create_dirs],
         "targets": [DATA_DIR, OUTPUT_DIR],
+        # Directory targets can't be fingerprinted, so without this the task
+        # would rerun on every invocation; it still reruns if the dirs vanish.
+        "uptodate": [run_once],
         "verbosity": 2,
     }
 
@@ -84,7 +89,8 @@ def task_pull():
         }
     else:
         # Keep the subtask discoverable without WRDS credentials: it succeeds
-        # with a note instead of failing or disappearing from `doit list`.
+        # with a note (printed on the first run only, to keep repeated `doit`
+        # runs no-ops) instead of failing or disappearing from `doit list`.
         def explain_crsp_pull():
             print(
                 "Skipped: CRSP Treasury pull requires a WRDS account.\n"
@@ -95,7 +101,7 @@ def task_pull():
         yield {
             "name": "crsp_treasury",
             "actions": [explain_crsp_pull],
-            "uptodate": [False],
+            "uptodate": [run_once],
             "verbosity": 2,
         }
 
@@ -117,19 +123,53 @@ def task_format():
     }
 
 
+TEST_RESULTS = DATA_DIR / "test_results.txt"
+
+
+def run_tests_and_record(
+    results_file=TEST_RESULTS, test_file="./src/test_gsw_svensson.py"
+):
+    """Run pytest and write its output to results_file only if the suite passes.
+
+    The results file is the doit target for the tests task: it is never written
+    on failure (and any stale copy is removed), so a failed run leaves the task
+    out of date and doit reruns it, while a passing run keeps `doit` idempotent.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", test_file, "-v"],
+        capture_output=True,
+        text=True,
+    )
+    print(result.stdout, end="")
+    print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        Path(results_file).unlink(missing_ok=True)
+        return False
+    Path(results_file).write_text(result.stdout)
+    return True
+
+
 def task_tests():
     """Run the pytest suite (GSW verification against the pulled data)."""
     return {
-        "actions": ["python -m pytest ./src/test_gsw_svensson.py -v"],
+        "actions": [run_tests_and_record],
         "file_dep": [
             "./src/test_gsw_svensson.py",
             "./src/gsw_pricing.py",
             "./src/pull_fed_yield_curve.py",
             DATA_DIR / "fed_yield_curve_all.parquet",
+            *(
+                [
+                    DATA_DIR / "CRSP_TFZ_INFO.parquet",
+                    DATA_DIR / "CRSP_TFZ_DAILY.parquet",
+                ]
+                if HAS_WRDS
+                else []
+            ),
         ],
+        "targets": [TEST_RESULTS],
         "task_dep": ["pull:fed_yield_curve"],
         "verbosity": 2,
-        "uptodate": [False],
     }
 
 
