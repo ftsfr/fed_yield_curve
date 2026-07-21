@@ -1,6 +1,6 @@
 # Dependencies for this project
 # Install with: pip install -r requirements.txt
-chartbook[all]>=0.0.3
+chartbook>=0.0.22
 ABlog==0.11.11
 black==24.8.0
 colorama
