@@ -253,7 +253,7 @@ def task_generate_charts():
 def task_generate_pipeline_site():
     return {
         "actions": [
-            "chartbook build -f",
+            "chartbook docs generate -f",
         ],
         "targets": ["docs/index.html"],
         "file_dep": ["chartbook.toml", OUTPUT_DIR / "yield_curve_replication.html", *notebook_files],
